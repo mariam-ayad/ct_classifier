@@ -18,7 +18,7 @@ from torch.optim import SGD # this imports the optimizer
 
 # let's import our own classes and functions!
 from util import init_seed
-from dataset import CTDataset
+from dataset import BleachDataset
 from model import CustomResNet18
 
 
@@ -28,7 +28,7 @@ def create_dataloader(cfg, split='train'):
         Loads a dataset according to the provided split and wraps it in a
         PyTorch DataLoader object.
     '''
-    dataset_instance = CTDataset(cfg, split)        # create an object instance of our CTDataset class
+    dataset_instance = BleachDataset(cfg, split)        # create an object instance of our CTDataset class
 
     dataLoader = DataLoader(
             dataset=dataset_instance,

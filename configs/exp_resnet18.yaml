@@ -8,11 +8,11 @@ device: cuda            # if you have multiple GPU's, you can use 'cude:4' to sp
 num_workers: 4          # number of CPU cores that load data in parallel. You can set this to the number of logical CPU cores that you have. 
 
 # dataset parameters
-data_root: datasets/CaltechCT
+data_root: '/home/Mariam/codes/ct_classifier/data/split_temporal'
 num_classes: 16
 
 # training hyperparameters
-image_size: [224, 224]
+image_size: [120, 120]
 num_epochs: 200         # number of epochs. Each epoch has multiple iterations. In each epoch the model goes over the full dataset once.
 batch_size: 128         # number of images that are processed in parallel in every iteration
 learning_rate: 0.001    # hyperparameter to adjust the optimizer's learning rate 
