@@ -19,7 +19,10 @@ class CustomResNet18(nn.Module):
         super(CustomResNet18, self).__init__()
 
         self.feature_extractor = resnet.resnet18(pretrained=True)       # "pretrained": use weights pre-trained on ImageNet
-
+        self.feature_extractor.conv1 = nn.Conv2d(in_channels=16, out_channels=self.feature_extractor.conv1.out_channels,
+                                                 kernel_size=self.feature_extractor.conv1.kernel_size, 
+                                                 stride=self.feature_extractor.conv1.stride, 
+                                                 padding=self.feature_extractor.conv1.padding,bias=False)
         # replace the very last layer from the original, 1000-class output
         # ImageNet to a new one that outputs num_classes
         last_layer = self.feature_extractor.fc                          # tip: print(self.feature_extractor) to get info on how model is set up
