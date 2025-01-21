@@ -9,7 +9,8 @@ num_workers: 4          # number of CPU cores that load data in parallel. You ca
 
 # dataset parameters
 data_root: '/home/Mariam/codes/ct_classifier/data/split_temporal'
-num_classes: 16
+num_classes: 2
+normalization_factor: 10000 #divide all channels by this value to normalize
 
 # training hyperparameters
 image_size: [120, 120]
