@@ -10,7 +10,7 @@ import argparse
 import yaml
 import glob
 from tqdm import trange
-
+from osgeo import gdal
 import torch # this imports pytorch
 import torch.nn as nn # this contains our loss function 
 from torch.utils.data import DataLoader # the pytorch dataloader class will take care of all kind of parallelization during training
@@ -20,7 +20,9 @@ from torch.optim import SGD # this imports the optimizer
 from util import init_seed
 from dataset import BleachDataset
 from model import CustomResNet18
-
+import warnings
+import rasterio
+warnings.filterwarnings("ignore",module='rasterio')
 
 
 def create_dataloader(cfg, split='train'):
@@ -124,11 +126,10 @@ def train(cfg, dataLoader, model, optimizer):
     for idx, (data, labels) in enumerate(dataLoader):       # see the last line of file "dataset.py" where we return the image tensor (data) and label
 
         # put data and labels on device
-        data, labels = data.to(device), labels.to(device)
-
+        data, labels = data.to(device), labels.type(torch.LongTensor).to(device)
         # forward pass
         prediction = model(data)
-
+        print(prediction.device,labels.device)
         # reset gradients to zero
         optimizer.zero_grad()
 
@@ -190,8 +191,7 @@ def validate(cfg, dataLoader, model):
         for idx, (data, labels) in enumerate(dataLoader):
 
             # put data and labels on device
-            data, labels = data.to(device), labels.to(device)
-
+            data, labels = data.to(device), labels.type(torch.LongTensor).to(device)
             # forward pass
             prediction = model(data)
 
@@ -279,4 +279,6 @@ def main():
 if __name__ == '__main__':
     # This block only gets executed if you call the "train.py" script directly
     # (i.e., "python ct_classifier/train.py").
+    gdal.UseExceptions()
+
     main()
