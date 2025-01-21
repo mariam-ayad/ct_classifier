@@ -14,13 +14,29 @@
 
 import os
 from torch.utils.data import Dataset
-from torchvision.transforms import Compose, Resize, ToTensor#,#RandomCrop
-from kornia.augmentation import Resize,RandomCrop
+from torchvision.transforms import Compose, Resize, ToTensor, Lambda#,#RandomCrop
+from kornia.augmentation import Resize,CenterCrop
 import pandas as pd
 import rasterio
 import torch
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore",category=UserWarning,module='rasterio')
 
+#warnings.filterwarnings('ignore',message='*.rasterio._env:*')
+
+# class NormalizeSat:
+#     def __init__(self,lower_percentile=2, upper_percentile=98 ):
+#         self.lower_percentile=lower_percentile
+#         self.upper_percentile = upper_percentile
+#         # Normalize by clipping the values between the lower and upper percentiles and then scaling to [0, 1]
+#         
+#         # for band in img:# check this bit!!!!!!!
+#         lower = np.percentile(band, self.lower_percentile)
+#         upper = np.percentile(band, self.upper_percentile)
+#         # Normalize by clipping the values between the lower and upper percentiles and then scaling to [0, 1]
+#         normalized_band = np.clip((band - lower) / (upper - lower), 0, 1)
+#         
 
 
 class BleachDataset(Dataset):
@@ -35,8 +51,7 @@ class BleachDataset(Dataset):
         # Transforms. Here's where we could add data augmentation 
         #  For now, we just resize the images to the same dimensions...and convert them to torch.Tensor.
         #  For other transformations see Björn's lecture on August 11 or 
-        self.transform = Compose([  
-            RandomCrop((cfg['image_size']))])
+        self.transform = Compose([CenterCrop(tuple(cfg['image_size'])), Lambda(lambda x: x/cfg['normalization_factor'])])
         
         # load annotation file
         annoPath = os.path.join(
@@ -104,16 +119,18 @@ class BleachDataset(Dataset):
             Here's where we actually load the image.
         '''
         couple = self.image_couples[idx]
-        label = self.couple_labels[idx]
+        str_label = np.array(self.couple_labels[idx])
+        label = torch.tensor(str_label=='bleached',dtype=torch.float32)
         idxs = couple
         imgs = []
         for idx in idxs:
             filepath = self.meta.query('image_id==@idx').filepath.values[0]
             with rasterio.open(filepath, mode='r') as ds:
                 img = ds.read()
+                ##*****change the config param for projection issue in rasterio********
             imgs.append(img)
         # transform: see lines 31ff above where we define our transformations
-        imgs = torch.tensor(np.concat(imgs),dtype=torch.float64)
-        img_tensor = self.transform(imgs)
+        imgs = torch.tensor(np.concatenate(imgs),dtype=torch.float32)
+        img_tensor = self.transform(imgs).squeeze()
 
         return img_tensor, label
