@@ -4,12 +4,11 @@
 
     2022 Benjamin Kellenberger
 '''
-
+import wandb
 import os
 import argparse
 import yaml
 import glob
-import wandb
 from tqdm import trange
 from osgeo import gdal
 import torch # this imports pytorch
