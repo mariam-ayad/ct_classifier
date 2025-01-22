@@ -41,7 +41,7 @@ warnings.filterwarnings("ignore",category=UserWarning,module='rasterio')
 
 class BleachDataset(Dataset):
 
-    def __init__(self, cfg, split='train'):
+    def __init__(self, cfg, split='train',eval=False):
         '''
             Constructor. Here, we collect and index the dataset inputs and
             labels.
@@ -62,7 +62,7 @@ class BleachDataset(Dataset):
         #meta = json.load(open(annoPath, 'r')) #read in csv
         self.meta = pd.read_csv(annoPath)  # Load the CSV file as a DataFrame
 
-
+        self.eval = eval
         ##############
         sites = self.meta.site.unique()
         self.image_couples = []
@@ -125,12 +125,15 @@ class BleachDataset(Dataset):
         imgs = []
         for idx in idxs:
             filepath = self.meta.query('image_id==@idx').filepath.values[0]
-            with rasterio.open(filepath, mode='r') as ds:
-                img = ds.read()
+            with rasterio.Env(GTIFF_SRS_SOURCE="EPSG"):
+                with rasterio.open(filepath, mode='r') as ds:
+                    img = ds.read()
                 ##*****change the config param for projection issue in rasterio********
             imgs.append(img)
         # transform: see lines 31ff above where we define our transformations
         imgs = torch.tensor(np.concatenate(imgs),dtype=torch.float32)
         img_tensor = self.transform(imgs).squeeze()
-
-        return img_tensor, label
+        if self.eval:
+            return img_tensor, label, couple
+        else:
+            return img_tensor, label
