@@ -9,6 +9,7 @@ import os
 import argparse
 import yaml
 import glob
+import wandb
 from tqdm import trange
 from osgeo import gdal
 import torch # this imports pytorch
@@ -226,6 +227,11 @@ def validate(cfg, dataLoader, model):
 
 
 def main():
+    # start a new wandb run to track this script
+    wandb.init(
+        # set the wandb project where this run will be logged
+        project="coral_bleaching",
+    )
 
     # Argument parser for command-line arguments:
     # python ct_classifier/train.py --config configs/exp_resnet18.yaml
@@ -273,7 +279,9 @@ def main():
             'oa_val': oa_val
         }
         save_model(cfg, current_epoch, model, stats)
-    
+        
+        # log metrics to wandb
+        wandb.log(stats)
 
     # That's all, folks!
         
