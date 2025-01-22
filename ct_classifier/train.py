@@ -25,17 +25,18 @@ import rasterio
 warnings.filterwarnings("ignore",module='rasterio')
 
 
-def create_dataloader(cfg, split='train'):
+def create_dataloader(cfg, split='train',eval=False):
     '''
         Loads a dataset according to the provided split and wraps it in a
         PyTorch DataLoader object.
     '''
-    dataset_instance = BleachDataset(cfg, split)        # create an object instance of our CTDataset class
+    dataset_instance = BleachDataset(cfg, split,eval=eval)        # create an object instance of our CTDataset class
+    # Added eval to get image couple ids back in evaluation mode
 
     dataLoader = DataLoader(
             dataset=dataset_instance,
             batch_size=cfg['batch_size'],
-            shuffle=True,
+            shuffle=split=='train',#shuffle only if in train split
             num_workers=cfg['num_workers']
         )
     return dataLoader
@@ -144,7 +145,7 @@ def train(cfg, dataLoader, model, optimizer):
 
         # log statistics
         loss_total += loss.item()                       # the .item() command retrieves the value of a single-valued tensor, regardless of its data type and device of tensor
-
+        # Add loss to W&B
         pred_label = torch.argmax(prediction, dim=1)    # the predicted label is the one at position (class index) with highest predicted value
         oa = torch.mean((pred_label == labels).float()) # OA: number of correct predictions divided by batch size (i.e., average/mean)
         oa_total += oa.item()
@@ -160,8 +161,9 @@ def train(cfg, dataLoader, model, optimizer):
     # end of epoch; finalize
     progressBar.close()
     loss_total /= len(dataLoader)           # shorthand notation for: loss_total = loss_total / len(dataLoader)
+    # Add loss to W&B
     oa_total /= len(dataLoader)
-
+    # Add oa_total to W&B
     return loss_total, oa_total
 
 
@@ -197,10 +199,10 @@ def validate(cfg, dataLoader, model):
 
             # loss
             loss = criterion(prediction, labels)
-
+            #add val loss to W&B
             # log statistics
             loss_total += loss.item()
-
+            
             pred_label = torch.argmax(prediction, dim=1)
             oa = torch.mean((pred_label == labels).float())
             oa_total += oa.item()
@@ -216,8 +218,9 @@ def validate(cfg, dataLoader, model):
     # end of epoch; finalize
     progressBar.close()
     loss_total /= len(dataLoader)
+    #add val loss to W&B
     oa_total /= len(dataLoader)
-
+    #add val oa to W&B
     return loss_total, oa_total
 
 
