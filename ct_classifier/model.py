@@ -9,16 +9,21 @@ import torch.nn as nn
 from torchvision.models import resnet
 
 
-class CustomResNet18(nn.Module):
+class CustomResNet(nn.Module):
 
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, layers=18):
         '''
             Constructor of the model. Here, we initialize the model's
             architecture (layers).
         '''
-        super(CustomResNet18, self).__init__()
+        super(CustomResNet, self).__init__()
 
-        self.feature_extractor = resnet.resnet18(pretrained=True)       # "pretrained": use weights pre-trained on ImageNet
+        # this is hack-y. Come up with better switch that doesn't involve hardcoding maybe?s
+        if layers==18:
+            self.feature_extractor = resnet.resnet18(pretrained=True)       # "pretrained": use weights pre-trained on ImageNet
+        elif layers==50:
+            self.feature_extractor = resnet.resnet50(pretrained=True)       # "pretrained": use weights pre-trained on ImageNet
+            
         self.feature_extractor.conv1 = nn.Conv2d(in_channels=16, out_channels=self.feature_extractor.conv1.out_channels,
                                                  kernel_size=self.feature_extractor.conv1.kernel_size, 
                                                  stride=self.feature_extractor.conv1.stride, 

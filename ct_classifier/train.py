@@ -19,7 +19,7 @@ from torch.optim import SGD # this imports the optimizer
 # let's import our own classes and functions!
 from util import init_seed
 from dataset import BleachDataset
-from model import CustomResNet18
+from model import CustomResNet
 import warnings
 import rasterio
 warnings.filterwarnings("ignore",module='rasterio')
@@ -47,7 +47,7 @@ def load_model(cfg):
     '''
         Creates a model instance and loads the latest model state weights.
     '''
-    model_instance = CustomResNet18(cfg['num_classes'])         # create an object instance of our CustomResNet18 class
+    model_instance = CustomResNet(cfg['num_classes'], cfg['layers'])         # create an object instance of our CustomResNet18 class
 
     # load latest model state
     model_states = glob.glob('model_states/*.pt')

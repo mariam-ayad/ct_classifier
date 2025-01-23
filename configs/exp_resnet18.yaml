@@ -18,3 +18,6 @@ num_epochs: 200         # number of epochs. Each epoch has multiple iterations. 
 batch_size: 128         # number of images that are processed in parallel in every iteration
 learning_rate: 0.001    # hyperparameter to adjust the optimizer's learning rate 
 weight_decay: 0.001     # hyperparameter for regularization
+
+# resnet depth
+layers: 50              # number of ResNet layers
