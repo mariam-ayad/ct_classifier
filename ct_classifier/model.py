@@ -24,7 +24,7 @@ class CustomResNet(nn.Module):
         elif layers==50:
             self.feature_extractor = resnet.resnet50(pretrained=True)       # "pretrained": use weights pre-trained on ImageNet
             
-        self.feature_extractor.conv1 = nn.Conv2d(in_channels=16, out_channels=self.feature_extractor.conv1.out_channels,
+        self.feature_extractor.conv1 = nn.Conv2d(in_channels=18, out_channels=self.feature_extractor.conv1.out_channels,
                                                  kernel_size=self.feature_extractor.conv1.kernel_size, 
                                                  stride=self.feature_extractor.conv1.stride, 
                                                  padding=self.feature_extractor.conv1.padding,bias=False)

@@ -1,15 +1,88 @@
-datasets
-model_states
+# ============================================
+# ct_classifier — custom .gitignore
+# ============================================
 
-__pycache__
-*.pyc
+# ---------- Large planet_superdove folders (TIF imagery) ----------
+planet_superdove/
+planet_superdove_BACKUP_2026020*/
+planet_superdove_landmasked/
+planet_superdove_old/
+planet_superdove_oldv2/
 
-.vscode
-.DS_Store
+# ---------- Other large data folders ----------
+datasets/
+data/
+coral_masks/
+land_mask/
+do not use/
+model_states/
 
-*.csv
+# ---------- Model checkpoints (.pt files) ----------
+*.pt
+
+# ---------- Zip / tar archives ----------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# ---------- Image / raster data ----------
 *.TIF
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.npy
+*.npz
+
+# ---------- Jupyter / Notebook ----------
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+*.nbconvert.*
+Untitled*.ipynb
+
+# ---------- Wandb ----------
+wandb/
+
+# ---------- Python / Conda / Venv ----------
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.so
+venv/
+env/
+.env/
+.venv/
+
+# ---------- Logs & generated ----------
 *.log
+*.csv
 *.json
-model_states/*
-wandb/*
+*.out
+*.err
+slurm-*.out
+
+# ---------- OS / IDE ----------
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- Other large/binary ----------
+*.h5
+*.hdf5
+*.pkl
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+land-mask-*.xml
+land-mask-*.json
