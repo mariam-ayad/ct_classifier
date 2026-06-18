@@ -12,12 +12,13 @@ planet_superdove_oldv2/
 # ---------- Other large data folders ----------
 datasets/
 data/
+!data/splits/
 coral_masks/
 land_mask/
 do not use/
 model_states/
 
-# ---------- Model checkpoints (.pt files) ----------
+# ---------- Model checkpoints ----------
 *.pt
 
 # ---------- Zip / tar archives ----------
@@ -32,7 +33,6 @@ model_states/
 *.tiff
 *.jpg
 *.jpeg
-*.png
 *.bmp
 *.gif
 *.npy
@@ -60,10 +60,8 @@ env/
 .env/
 .venv/
 
-# ---------- Logs & generated ----------
+# ---------- Logs & slurm ----------
 *.log
-*.csv
-*.json
 *.out
 *.err
 slurm-*.out
