@@ -184,12 +184,15 @@ planet_superdove_landmasked/
 ### Running the script
 
 ```bash
-# Dry run first to verify paths and file discovery:
-python scripts/extract_tiles.py --site chachacual_mexico --label bleached --dry-run
+# Always dry-run first — no files are written, but it shows exactly what would happen:
+python scripts/extract_tiles.py --downloads-root /path/to/planet_orders --dry-run
 
-# Then run for real (one label at a time):
-python scripts/extract_tiles.py --site chachacual_mexico --label bleached
-python scripts/extract_tiles.py --site chachacual_mexico --label healthy
+# Process everything in the downloads folder:
+python scripts/extract_tiles.py --downloads-root /path/to/planet_orders
+
+# Filter to one site or one label:
+python scripts/extract_tiles.py --downloads-root /path/to/planet_orders --site pulau_kapas
+python scripts/extract_tiles.py --downloads-root /path/to/planet_orders --label bleached
 ```
 
 ### Verifying tile integrity
