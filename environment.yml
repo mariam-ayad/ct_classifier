@@ -1,0 +1,36 @@
+name: coral
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.11
+
+  # PyTorch (CUDA 12.4 — compatible with driver >= 525)
+  - pytorch::pytorch=2.4
+  - pytorch::torchvision=0.19
+  - pytorch::pytorch-cuda=12.4
+
+  # Geospatial (conda-forge builds handle GDAL/PROJ deps cleanly)
+  - conda-forge::rasterio
+  - conda-forge::geopandas
+  - conda-forge::shapely
+
+  # Science / data
+  - conda-forge::numpy
+  - conda-forge::pandas
+  - conda-forge::scikit-learn
+  - conda-forge::matplotlib
+  - conda-forge::pyyaml
+  - conda-forge::tqdm
+
+  # Jupyter kernel registration
+  - conda-forge::ipykernel
+
+  # kornia has no conda package — install via pip
+  - pip:
+    - kornia==0.7.3
