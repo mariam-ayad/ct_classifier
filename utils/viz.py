@@ -78,7 +78,7 @@ def overlay_cam(img, cam, alpha=0.45, colormap="jet"):
     if denom > 1e-8:
         cam_norm = cam_norm / denom
 
-    heatmap = cm.get_cmap(colormap)(cam_norm)[..., :3].astype(np.float32)
+    heatmap = cm.colormaps[colormap](cam_norm)[..., :3].astype(np.float32)
     blended = (1 - alpha) * img + alpha * heatmap
     return np.clip(blended, 0, 1)
 
