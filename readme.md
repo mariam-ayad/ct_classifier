@@ -86,7 +86,7 @@ python -m ipykernel install --user --name coral --display-name "Python (coral)"
 python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 ```
 
-> **On HPC systems (e.g., NERSC Perlmutter):** install the environment into scratch storage to avoid home directory quota limits:
+> **On HPC systems:** install the environment into scratch storage to avoid home directory quota limits:
 > ```bash
 > module load conda
 > conda env create --prefix /path/to/your/scratch/envs/coral -f environment.yml
@@ -181,12 +181,12 @@ Run the notebooks in order from the `analysis/` directory. Each notebook require
              Analysis of a Mass Coral Bleaching Event Using Spaceborne Remote Sensing Imagery},
   author  = {Ayad, Mariam and Lee, Christine M. and Porter, Joseph W. and
              Chirayath, Ved and Nivison, Casey L. and Vaughn, Kathleen M. and Kudela, Raphael},
-  journal = {Environmental Science \& Technology},
-  volume  = {59},
-  number  = {29},
-  pages   = {15227--15235},
-  year    = {2025},
-  doi     = {10.1021/acs.est.5c00001}
+  journal = {},
+  volume  = {},
+  number  = {},
+  pages   = {},
+  year    = {},
+  doi     = {}
 }
 ```
 
@@ -194,4 +194,4 @@ Run the notebooks in order from the `analysis/` directory. Each notebook require
 
 ## Acknowledgements
 
-This work was funded by the NASA Minority University Research and Education Project (MUREP) Institutional Research Opportunity under Grant 21-MSI21-0034. PlanetScope imagery was accessed through the NASA Commercial Smallsat Data Acquisition (CSDA) program.
+
