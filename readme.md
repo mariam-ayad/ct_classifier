@@ -110,7 +110,7 @@ planet_superdove_landmasked/
     bleached/tiled_360m/<YYYYMMDD>/loc*.tif
 ```
 
-Each `.tif` is a 120×120 px, 8-band PlanetScope SuperDove tile (GeoTIFF, float32). Band order: coastal blue · blue · green I · green II · yellow · red · red edge · NIR.
+Each `.tif` is a 120×120 px, 8-band PlanetScope SuperDove tile (GeoTIFF, float32). Band order: coastal blue · blue · green I · green II · yellow · red · red edge · NIR. (We then add 1 channel for the land mask during the processing stage)
 
 ---
 
