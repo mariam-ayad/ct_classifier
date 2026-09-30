@@ -17,6 +17,7 @@ coral_masks/
 land_mask/
 do not use/
 model_states/
+runs/
 
 # ---------- Model checkpoints ----------
 *.pt

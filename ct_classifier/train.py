@@ -1,16 +1,25 @@
 '''
-    Training script. Here, we load the training and validation datasets (and
-    data loaders) and the model and train and validate the model accordingly.
+    Training script for one leave-one-site-out fold.
 
-    2022 Benjamin Kellenberger
+    Expects <data_root>/{train,val,test}.csv (see scripts/make_splits.py):
+      train : tiles from the 11 training sites (minus inner-val dates)
+      val   : inner validation dates from the training sites -> picks best epoch
+      test  : the held-out site -> scored once, with the best checkpoint
+
+    Outputs go to <output_dir> (default: runs/<held-out site>/):
+      config.yaml   config used for this fold (read by the analysis notebooks)
+      last.pt       latest epoch (model + optimizer + scheduler) for resuming
+      best.pt       best inner-val epoch, with its test metrics added at the end
+      results.json  per-fold summary consumed by scripts/summarize_loso.py
+
+    2022 Benjamin Kellenberger (original); adapted for coral LOSO.
 '''
-import wandb
 import os
+import json
 import argparse
 import yaml
-import glob
 from tqdm import trange
-from osgeo import gdal
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -23,8 +32,17 @@ from dataset import BleachDataset
 from model import CustomResNet
 
 import warnings
-import rasterio
 warnings.filterwarnings("ignore", module='rasterio')
+
+# wandb is optional: without it (or with wandb_mode: disabled) training still runs.
+# The hasattr check guards against stale local wandb/ log folders being imported
+# as a namespace package when the real library isn't installed.
+try:
+    import wandb
+    if not hasattr(wandb, 'init'):
+        raise ImportError
+except ImportError:
+    wandb = None
 
 
 def create_dataloader(cfg, split='train', eval=False):
@@ -43,75 +61,13 @@ def create_dataloader(cfg, split='train', eval=False):
     return dataLoader
 
 
-def load_model(cfg):
+def get_test_site(data_root):
     '''
-        Creates a model instance and loads the latest numbered model state weights.
-        Also loads best validation checkpoint metadata if available.
+        Name of the held-out site, read from test.csv.
     '''
-    model_instance = CustomResNet(cfg['num_classes'], cfg['layers'])
-
-    # Only match numbered checkpoints, not best.pt
-    model_states = glob.glob('model_states/[0-9]*.pt')
-    if len(model_states):
-        model_epochs = [
-            int(os.path.basename(m).replace('.pt', ''))
-            for m in model_states
-        ]
-        start_epoch = max(model_epochs)
-
-        print(f'Resuming from epoch {start_epoch}')
-        state = torch.load(f'model_states/{start_epoch}.pt', map_location='cpu')
-        model_instance.load_state_dict(state['model'])
-    else:
-        print('Starting new model')
-        start_epoch = 0
-
-    # Load best checkpoint metadata if present
-    best_oa_val = -1.0
-    best_epoch = 0
-    best_path = 'model_states/best.pt'
-    if os.path.exists(best_path):
-        best_state = torch.load(best_path, map_location='cpu')
-        best_oa_val = best_state.get('oa_val', -1.0)
-        best_epoch = best_state.get('best_epoch', 0)
-        print(f'Found previous best model at epoch {best_epoch} with val OA: {100 * best_oa_val:.2f}%')
-
-    return model_instance, start_epoch, best_oa_val, best_epoch
-
-
-def save_model(cfg, epoch, model, stats):
-    '''
-        Save per-epoch checkpoint.
-    '''
-    os.makedirs('model_states', exist_ok=True)
-
-    save_stats = stats.copy()
-    save_stats['model'] = model.state_dict()
-
-    torch.save(save_stats, f'model_states/{epoch}.pt')
-
-    cfpath = 'model_states/config.yaml'
-    if not os.path.exists(cfpath):
-        with open(cfpath, 'w') as f:
-            yaml.dump(cfg, f)
-
-
-def save_best_model(cfg, epoch, model, stats, filename='best.pt'):
-    '''
-        Save best validation checkpoint separately.
-    '''
-    os.makedirs('model_states', exist_ok=True)
-
-    best_stats = stats.copy()
-    best_stats['model'] = model.state_dict()
-    best_stats['best_epoch'] = epoch
-
-    torch.save(best_stats, os.path.join('model_states', filename))
-
-    cfpath = 'model_states/config.yaml'
-    if not os.path.exists(cfpath):
-        with open(cfpath, 'w') as f:
-            yaml.dump(cfg, f)
+    sites = pd.read_csv(os.path.join(data_root, 'test.csv')).site.unique()
+    assert len(sites) == 1, f'test.csv should contain exactly one site, found {list(sites)}'
+    return sites[0]
 
 
 def setup_optimizer(cfg, model):
@@ -127,124 +83,111 @@ def setup_optimizer(cfg, model):
     return optimizer
 
 
-def setup_scheduler(cfg, optimizer, start_epoch=0):
+def setup_scheduler(cfg, optimizer):
     '''
-        Cosine annealing scheduler.
-        T_max is the number of epochs over which LR decays from initial lr to eta_min.
+        Cosine annealing from learning_rate down to min_lr over num_epochs.
     '''
-    scheduler = CosineAnnealingLR(
+    return CosineAnnealingLR(
         optimizer,
         T_max=cfg['num_epochs'],
-        eta_min=cfg.get('min_learning_rate', 1e-6)
+        eta_min=cfg.get('min_lr', 1e-6)
     )
 
-    # Advance scheduler if resuming
-    for _ in range(start_epoch):
-        scheduler.step()
 
-    return scheduler
-
-
-def train(cfg, dataLoader, model, optimizer):
+def load_checkpoint(output_dir, model, optimizer, scheduler):
     '''
-        Our actual training function.
+        Resume from <output_dir>/last.pt if it exists. Only this fold's own
+        directory is searched, so a new fold never picks up another fold's weights.
+
+        Returns (start_epoch, best_oa_val, best_epoch).
     '''
-    device = cfg['device']
+    last_path = os.path.join(output_dir, 'last.pt')
+    if not os.path.exists(last_path):
+        print('Starting new model')
+        return 0, -1.0, 0
 
-    model.to(device)
-    model.train()
-
-    criterion = nn.CrossEntropyLoss()
-
-    loss_total, oa_total = 0.0, 0.0
-
-    progressBar = trange(len(dataLoader))
-    for idx, (data, labels) in enumerate(dataLoader):
-        data = data.to(device)
-        labels = labels.long().to(device)
-
-        prediction = model(data)
-
-        optimizer.zero_grad()
-        loss = criterion(prediction, labels)
-        loss.backward()
-        optimizer.step()
-
-        loss_total += loss.item()
-        pred_label = torch.argmax(prediction, dim=1)
-        oa = torch.mean((pred_label == labels).float())
-        oa_total += oa.item()
-
-        progressBar.set_description(
-            '[Train] Loss: {:.2f}; OA: {:.2f}%'.format(
-                loss_total / (idx + 1),
-                100 * oa_total / (idx + 1)
-            )
-        )
-        progressBar.update(1)
-
-    progressBar.close()
-    loss_total /= len(dataLoader)
-    oa_total /= len(dataLoader)
-
-    return loss_total, oa_total
+    state = torch.load(last_path, map_location='cpu', weights_only=False)
+    model.load_state_dict(state['model'])
+    optimizer.load_state_dict(state['optimizer'])
+    scheduler.load_state_dict(state['scheduler'])
+    print(f'Resuming from epoch {state["epoch"]} '
+          f'(best val OA so far: {100 * state["best_oa_val"]:.2f}% at epoch {state["best_epoch"]})')
+    return state['epoch'], state['best_oa_val'], state['best_epoch']
 
 
-def validate(cfg, dataLoader, model):
+def save_checkpoint(output_dir, filename, model, stats, **extra):
     '''
-        Validation function. Note that this looks almost the same as the training
-        function, except that we don't use any optimizer or gradient steps.
+        Save model weights plus stats (and any extra state) to <output_dir>/<filename>.
+    '''
+    save_stats = stats.copy()
+    save_stats.update(extra)
+    save_stats['model'] = model.state_dict()
+    torch.save(save_stats, os.path.join(output_dir, filename))
+
+
+def run_epoch(cfg, dataLoader, model, optimizer=None, desc='Val '):
+    '''
+        One pass over dataLoader. Trains if an optimizer is given, otherwise
+        evaluates without gradients.
+
+        Returns (mean loss per sample, overall accuracy per sample).
     '''
     device = cfg['device']
+    training = optimizer is not None
+
     model.to(device)
-    model.eval()
+    model.train(training)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(reduction='sum')
 
-    loss_total, oa_total = 0.0, 0.0
+    loss_sum, n_correct, n_total = 0.0, 0, 0
 
     progressBar = trange(len(dataLoader))
-
-    with torch.no_grad():
-        for idx, (data, labels) in enumerate(dataLoader):
-            data = data.to(device)
-            labels = labels.long().to(device)
+    with torch.set_grad_enabled(training):
+        for batch in dataLoader:
+            data = batch[0].to(device)
+            labels = batch[1].long().to(device)
 
             prediction = model(data)
             loss = criterion(prediction, labels)
 
-            loss_total += loss.item()
+            if training:
+                optimizer.zero_grad()
+                (loss / labels.numel()).backward()
+                optimizer.step()
 
-            pred_label = torch.argmax(prediction, dim=1)
-            oa = torch.mean((pred_label == labels).float())
-            oa_total += oa.item()
+            loss_sum += loss.item()
+            n_correct += (torch.argmax(prediction, dim=1) == labels).sum().item()
+            n_total += labels.numel()
 
             progressBar.set_description(
-                '[Val ] Loss: {:.2f}; OA: {:.2f}%'.format(
-                    loss_total / (idx + 1),
-                    100 * oa_total / (idx + 1)
+                '[{}] Loss: {:.2f}; OA: {:.2f}%'.format(
+                    desc, loss_sum / n_total, 100 * n_correct / n_total
                 )
             )
             progressBar.update(1)
 
     progressBar.close()
-    loss_total /= len(dataLoader)
-    oa_total /= len(dataLoader)
-
-    return loss_total, oa_total
+    return loss_sum / n_total, n_correct / n_total
 
 
 def main():
-    wandb.init(
-        project="coral_bleaching",
-    )
-
-    parser = argparse.ArgumentParser(description='Train deep learning model.')
-    parser.add_argument('--config', help='Path to config file', default='configs/exp_resnet18.yaml')
+    parser = argparse.ArgumentParser(description='Train one leave-one-site-out fold.')
+    parser.add_argument('--config', help='Path to config file', default='configs/loso_resnet50.yaml')
+    parser.add_argument('--data_root', help='Folder with train/val/test.csv (overrides config)', default=None)
+    parser.add_argument('--output_dir', help='Where checkpoints/results go (default: runs/<test site>)', default=None)
     args = parser.parse_args()
 
     print(f'Using config "{args.config}"')
     cfg = yaml.safe_load(open(args.config, 'r'))
+    if args.data_root is not None:
+        cfg['data_root'] = os.path.abspath(args.data_root)
+
+    test_site = get_test_site(cfg['data_root'])
+    output_dir = args.output_dir or os.path.join(cfg.get('runs_dir', 'runs'), test_site)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f'Held-out test site: {test_site}')
+    print(f'Output directory:   {output_dir}')
 
     init_seed(cfg.get('seed', None))
 
@@ -253,55 +196,112 @@ def main():
         print(f'WARNING: device set to "{device}" but CUDA not available; falling back to CPU...')
         cfg['device'] = 'cpu'
 
+    # config next to the checkpoints, so analysis notebooks load the right splits
+    with open(os.path.join(output_dir, 'config.yaml'), 'w') as f:
+        yaml.dump(cfg, f)
+
+    use_wandb = wandb is not None and cfg.get('wandb_mode', 'online') != 'disabled'
+    if not use_wandb:
+        print('wandb logging disabled')
+    else:
+        wandb.init(
+            project=cfg.get('wandb_project', 'coral_bleaching'),
+            group=cfg.get('wandb_group', 'loso'),
+            name=test_site,
+            config=cfg,
+            mode=cfg.get('wandb_mode', 'online'),
+        )
+
     dl_train = create_dataloader(cfg, split='train')
     dl_val = create_dataloader(cfg, split='val')
+    dl_test = create_dataloader(cfg, split='test')
 
-    print(f"Train dataset length: {len(dl_train.dataset)}")
-    print(f"Val dataset length:   {len(dl_val.dataset)}")
+    print(f"Train pairs: {len(dl_train.dataset)}")
+    print(f"Val pairs:   {len(dl_val.dataset)}")
+    print(f"Test pairs:  {len(dl_test.dataset)}")
 
-    model, current_epoch, best_oa_val, best_epoch = load_model(cfg)
-
+    # move to device before building the optimizer so resumed optimizer state lands there too
+    model = CustomResNet(cfg['num_classes'], cfg['layers']).to(cfg['device'])
     optim = setup_optimizer(cfg, model)
-    scheduler = setup_scheduler(cfg, optim, current_epoch)
+    scheduler = setup_scheduler(cfg, optim)
+    current_epoch, best_oa_val, best_epoch = load_checkpoint(output_dir, model, optim, scheduler)
 
     numEpochs = cfg['num_epochs']
+    save_every = cfg.get('save_every', 0)
     while current_epoch < numEpochs:
         current_epoch += 1
         print(f'Epoch {current_epoch}/{numEpochs}')
 
-        loss_train, oa_train = train(cfg, dl_train, model, optim)
-        loss_val, oa_val = validate(cfg, dl_val, model)
+        loss_train, oa_train = run_epoch(cfg, dl_train, model, optim, desc='Train')
+        loss_val, oa_val = run_epoch(cfg, dl_val, model, desc='Val ')
 
-        scheduler.step()
         current_lr = optim.param_groups[0]['lr']
+        scheduler.step()
 
         stats = {
             'loss_train': loss_train,
             'loss_val': loss_val,
             'oa_train': oa_train,
             'oa_val': oa_val,
-            'lr': current_lr
+            'lr': current_lr,
+            'epoch': current_epoch,
         }
 
-        # Save regular epoch checkpoint
-        save_model(cfg, current_epoch, model, stats)
-
-        # Save best validation checkpoint
+        # Best checkpoint is selected on the inner val set only (never the test site)
         if oa_val > best_oa_val:
             best_oa_val = oa_val
             best_epoch = current_epoch
-            save_best_model(cfg, current_epoch, model, stats, filename='best.pt')
+            save_checkpoint(output_dir, 'best.pt', model, stats, best_epoch=current_epoch)
             print(f'New best model saved at epoch {current_epoch} with val OA: {100 * oa_val:.2f}%')
 
-        wandb.log({
-            **stats,
-            'best_oa_val': best_oa_val,
-            'best_epoch': best_epoch
-        })
+        save_checkpoint(output_dir, 'last.pt', model, stats,
+                        optimizer=optim.state_dict(), scheduler=scheduler.state_dict(),
+                        best_oa_val=best_oa_val, best_epoch=best_epoch)
+        if save_every and current_epoch % save_every == 0:
+            save_checkpoint(output_dir, f'{current_epoch}.pt', model, stats)
+
+        if use_wandb:
+            wandb.log({
+                **stats,
+                'best_oa_val': best_oa_val,
+                'best_epoch': best_epoch
+            })
+
+    # ── Final: score the held-out site with the last and the best-val checkpoints
+    loss_test_last, oa_test_last = run_epoch(cfg, dl_test, model, desc='Test (last)')
+
+    best_path = os.path.join(output_dir, 'best.pt')
+    best_state = torch.load(best_path, map_location='cpu', weights_only=False)
+    model.load_state_dict(best_state['model'])
+    loss_test, oa_test = run_epoch(cfg, dl_test, model, desc='Test (best)')
+
+    best_state.update({'loss_test': loss_test, 'oa_test': oa_test, 'test_site': test_site})
+    torch.save(best_state, best_path)
+
+    n_test_tiles = len(dl_test.dataset.meta)
+    results = {
+        'test_site': test_site,
+        'best_epoch': best_state['best_epoch'],
+        'oa_val': best_state['oa_val'],
+        'oa_test': oa_test,
+        'loss_test': loss_test,
+        'oa_test_last_epoch': oa_test_last,
+        'n_test_tiles': n_test_tiles,
+        'n_test_pairs': len(dl_test.dataset),
+        'num_epochs': numEpochs,
+    }
+    with open(os.path.join(output_dir, 'results.json'), 'w') as f:
+        json.dump(results, f, indent=2)
+
+    if use_wandb:
+        wandb.summary.update({'oa_test': oa_test, 'oa_test_last_epoch': oa_test_last,
+                              'best_epoch': best_state['best_epoch']})
+        wandb.finish()
 
     print(f'Training complete. Best val OA: {100 * best_oa_val:.2f}% at epoch {best_epoch}')
+    print(f'Held-out site {test_site}: test OA {100 * oa_test:.2f}% '
+          f'(last epoch: {100 * oa_test_last:.2f}%)')
 
 
 if __name__ == '__main__':
-    gdal.UseExceptions()
     main()
