@@ -34,3 +34,4 @@ dependencies:
   # kornia has no conda package — install via pip
   - pip:
     - kornia==0.7.3
+    - wandb

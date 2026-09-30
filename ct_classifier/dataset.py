@@ -81,12 +81,9 @@ class BleachDataset(Dataset):
         self.transform = Compose([
             NormalizeByFactor(cfg['normalization_factor'])
         ])      
-        # load annotation file
-        annoPath = os.path.join(
-            self.data_root,
-            #'train_annotations.json' if self.split=='train' else 'cis_val_annotations.json'
-            'train.csv' if self.split=='train' else 'val.csv'
-        )
+        # load annotation file: train.csv / val.csv (inner val, used for model
+        # selection) / test.csv (held-out site)
+        annoPath = os.path.join(self.data_root, f'{self.split}.csv')
         #meta = json.load(open(annoPath, 'r')) #read in csv
         self.meta = pd.read_csv(annoPath)  # Load the CSV file as a DataFrame
 

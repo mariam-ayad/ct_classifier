@@ -44,14 +44,14 @@ Leave-one-site-out validation accuracy across all 12 reef sites:
 ```
 ct_classifier/          Source module — dataset, model, training loop, utilities
 configs/                YAML experiment configs (model architecture, hyperparameters)
-scripts/                Shell scripts for batch training runs
+scripts/                Tile extraction, LOSO split builder, batch training + summary
 utils/                  Shared Python helpers imported by analysis notebooks
   masking.py            Land mask application (shapefile → GeoTIFF, site aliases)
   viz.py                RGB display helpers for PlanetScope imagery
   evaluate.py           Inference, metrics, leakage checks
   gradcam.py            Hooks-based Grad-CAM and occlusion sensitivity
 analysis/               Clean, numbered Jupyter notebooks — one analysis per file
-  01_data_split         Leave-one-site-out split → data/splits/train.csv + val.csv
+  01_data_split         Leave-one-site-out splits → data/splits/<site>/{train,val,test}.csv
   02_evaluation         Val metrics, score histograms, ROC curve, per-site accuracy
   03_gradcam            Multi-layer Grad-CAM on TP/FP/FN/TN examples
   04_spatial_prob_map   Sub-tile sliding-window bleaching probability heatmap
@@ -136,33 +136,71 @@ For the land masking step specifically, `utils/masking.py` handles shapefile loo
 
 ## Training
 
-Edit the config to point `data_root` at your split CSVs, then run:
+Training follows a **leave-one-site-out** protocol. For each of the 12 sites:
+
+| Split | Contents | Role |
+|---|---|---|
+| `test`  | every tile from the held-out site | reported accuracy (Results table) |
+| `val`   | 2 random healthy + 1 random bleached date from each training site | selects the best epoch |
+| `train` | remaining tiles from the 11 training sites | training |
+
+The held-out site is never used for training or model selection.
+
+**1. Build the splits** (writes `data/splits/<site>/{train,val,test}.csv`):
 
 ```bash
-python ct_classifier/train.py --config configs/exp_resnet18.yaml
+python scripts/make_splits.py --data-root planet_superdove_landmasked
 ```
 
-Key config fields:
+**2. Train all folds** (writes `runs/<site>/`; interrupted folds resume, finished folds are skipped):
+
+```bash
+bash scripts/run_loso.sh                      # all 12 sites
+bash scripts/run_loso.sh sanagustin_mexico    # a single fold
+```
+
+or one fold directly:
+
+```bash
+python ct_classifier/train.py --config configs/loso_resnet50.yaml \
+    --data_root data/splits/sanagustin_mexico --output_dir runs/sanagustin_mexico
+```
+
+**3. Summarize** (per-site table, mean / weighted mean / median / SD):
+
+```bash
+python scripts/summarize_loso.py --runs-dir runs
+```
+
+**4. Per-site supplemental figures** (score histograms, spectral importance, Grad-CAM for every fold, plus combined grids in `runs/supplement/`):
+
+```bash
+python scripts/make_site_figures.py --runs-dir runs
+```
+
+Each `runs/<site>/` contains `config.yaml`, `best.pt` (best inner-val epoch, with its test metrics),
+`last.pt` (for resuming), and `results.json`.
+
+Key config fields (`configs/loso_resnet50.yaml`):
 
 | Field | Description |
 |---|---|
-| `data_root` | Path to directory containing `train.csv` and `val.csv` |
+| `data_root` | Folder with `train.csv`, `val.csv`, `test.csv` (usually set with `--data_root`) |
 | `layers` | ResNet variant — `18` or `50` |
 | `num_classes` | `2` (healthy / bleached) |
 | `normalization_factor` | Scalar divisor applied to raw reflectance values |
 | `image_size` | Crop size, default `[120, 120]` |
-| `batch_size` | Training batch size |
-
-Model checkpoints and a copy of the config are saved to `model_states/`.
+| `batch_size`, `learning_rate`, `min_lr`, `weight_decay`, `num_epochs` | AdamW + cosine schedule |
+| `wandb_mode` | `online`, `offline`, or `disabled` (wandb is optional) |
 
 ---
 
 ## Analysis
 
-Run the notebooks in order from the `analysis/` directory. Each notebook requires only the CONFIG cell at the top to be updated with your checkpoint and data paths.
+Run the notebooks in order from the `analysis/` directory. Each notebook requires only the CONFIG cell at the top to be updated with your checkpoint (e.g. `runs/<site>/best.pt`) and project path; the splits are read from the `config.yaml` saved next to the checkpoint. Notebooks 02–06 evaluate on the held-out site (`EVAL_SPLIT = "test"`) by default.
 
 ```
-01_data_split.ipynb     → generates data/splits/train.csv and val.csv  (run first)
+01_data_split.ipynb     → generates data/splits/<site>/{train,val,test}.csv  (same as scripts/make_splits.py)
 02_evaluation.ipynb     → loads checkpoint, computes metrics and figures
 03_gradcam.ipynb        → spatial attention maps on val examples
 04_spatial_prob_map.ipynb → sub-tile bleaching probability heatmap

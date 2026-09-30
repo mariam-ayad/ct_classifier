@@ -1,0 +1,30 @@
+# Leave-one-site-out ResNet-50 config (paper setup).
+# data_root is normally overridden per fold: --data_root data/splits/<site>
+
+# environment/computational parameters
+seed: 32678456782       # random number generator seed (long integer value)
+device: cuda
+num_workers: 4          # CPU workers loading tiles in parallel
+
+# dataset parameters
+data_root: 'data/splits/sanagustin_mexico'   # folder with train.csv / val.csv / test.csv
+num_classes: 2
+normalization_factor: 10000   # divide all reflectance channels by this value
+
+# training hyperparameters
+image_size: [120, 120]
+num_epochs: 100
+batch_size: 128
+learning_rate: 0.001    # initial LR for AdamW, cosine-annealed to min_lr
+min_lr: 0.000008
+weight_decay: 0.001
+layers: 50              # ResNet depth (18 or 50)
+
+# outputs
+runs_dir: runs          # checkpoints go to <runs_dir>/<held-out site>/
+save_every: 0           # also keep <epoch>.pt every N epochs (0 = only best.pt + last.pt)
+
+# logging
+wandb_project: coral_bleaching
+wandb_group: loso
+wandb_mode: online      # "offline" on compute nodes without internet, "disabled" to turn off
