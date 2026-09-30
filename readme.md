@@ -172,6 +172,12 @@ python ct_classifier/train.py --config configs/loso_resnet50.yaml \
 python scripts/summarize_loso.py --runs-dir runs
 ```
 
+**4. Per-site supplemental figures** (score histograms, spectral importance, Grad-CAM for every fold, plus combined grids in `runs/supplement/`):
+
+```bash
+python scripts/make_site_figures.py --runs-dir runs
+```
+
 Each `runs/<site>/` contains `config.yaml`, `best.pt` (best inner-val epoch, with its test metrics),
 `last.pt` (for resuming), and `results.json`.
 

@@ -168,3 +168,52 @@ def make_occlusion_map(model, tile, patch_size=16, stride=8,
         occ_map = (occ_map - occ_min) / (occ_max - occ_min)
 
     return occ_map
+
+
+def channel_occlusion_importance(model, loader, device="cpu", target_class="pred"):
+    """
+    Per-channel mean-replacement occlusion over a whole dataloader.
+
+    For each sample and channel, the channel is replaced by that sample's own
+    spatial mean (removing spatial variation, keeping mean intensity). Importance
+    is the drop in the target-class logit relative to the unmodified input. Same
+    method as analysis/05_band_importance.ipynb.
+
+    Args:
+        model: CustomResNet
+        loader: DataLoader yielding (data, labels, ...) batches of [B, C, H, W]
+        device: torch device string
+        target_class: "pred" (each sample's unmodified prediction, held fixed)
+                      or an int class index
+
+    Returns [C] float64 numpy array of mean logit drops (higher = more important).
+    """
+    model.eval()
+    model.to(device)
+
+    drop_sum, n = None, 0
+    with torch.no_grad():
+        for batch in loader:
+            data = batch[0].to(device)
+            base_logits = model(data)
+
+            if target_class == "pred":
+                target_idx = base_logits.argmax(dim=1)
+            else:
+                target_idx = torch.full((len(data),), int(target_class),
+                                        dtype=torch.long, device=device)
+            base_scores = base_logits.gather(1, target_idx.unsqueeze(1)).squeeze(1)
+
+            channel_means = data.mean(dim=(2, 3), keepdim=True)
+            if drop_sum is None:
+                drop_sum = np.zeros(data.shape[1], dtype=np.float64)
+
+            for ch in range(data.shape[1]):
+                x_occ = data.clone()
+                x_occ[:, ch:ch + 1] = channel_means[:, ch:ch + 1]
+                occ_scores = model(x_occ).gather(1, target_idx.unsqueeze(1)).squeeze(1)
+                drop_sum[ch] += (base_scores - occ_scores).sum().item()
+
+            n += data.shape[0]
+
+    return drop_sum / max(n, 1)
